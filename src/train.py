@@ -4,7 +4,7 @@ Trains a PyTorch image classification model using device-agnostic code.
 from multiprocessing import freeze_support
 import os
 import torch
-import data_setup, engine, model_builder, utils
+import src.data_setup as data_setup, src.engine as engine, model_builder, utils
 from torchvision import transforms
 
 # Setup hyperparameters
