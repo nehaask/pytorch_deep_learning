@@ -4,53 +4,41 @@ Contains PyTorch model code to instantiate a TinyVGG model.
 import torch
 from torch import nn 
 
-class TinyVGG(nn.Module):
-  """Creates the TinyVGG architecture.
+class PatchEmbedding(nn.Module):
+    """Turns a 2D input image into a 1D sequence learnable embedding vector.
 
-  Replicates the TinyVGG architecture from the CNN explainer website in PyTorch.
-  See the original architecture here: https://poloclub.github.io/cnn-explainer/
+    Args:
+        in_channels (int): Number of color channels for the input images. Defaults to 3.
+        patch_size (int): Size of patches to convert input image into. Defaults to 16.
+        embedding_dim (int): Size of embedding to turn image into. Defaults to 768.
+    """
+    # 2. Initialize the class with appropriate variables
+    def __init__(self,
+                 in_channels:int=3,
+                 patch_size:int=16,
+                 embedding_dim:int=768):
+        super().__init__()
 
-  Args:
-    input_shape: An integer indicating number of input channels.
-    hidden_units: An integer indicating number of hidden units between layers.
-    output_shape: An integer indicating number of output units.
-  """
-  def __init__(self, input_shape: int, hidden_units: int, output_shape: int) -> None:
-      super().__init__()
-      self.conv_block_1 = nn.Sequential(
-          nn.Conv2d(in_channels=input_shape, 
-                    out_channels=hidden_units, 
-                    kernel_size=3, 
-                    stride=1, 
-                    padding=0),  
-          nn.ReLU(),
-          nn.Conv2d(in_channels=hidden_units, 
-                    out_channels=hidden_units,
-                    kernel_size=3,
-                    stride=1,
-                    padding=0),
-          nn.ReLU(),
-          nn.MaxPool2d(kernel_size=2,
-                        stride=2)
-      )
-      self.conv_block_2 = nn.Sequential(
-          nn.Conv2d(hidden_units, hidden_units, kernel_size=3, padding=0),
-          nn.ReLU(),
-          nn.Conv2d(hidden_units, hidden_units, kernel_size=3, padding=0),
-          nn.ReLU(),
-          nn.MaxPool2d(2)
-      )
-      self.classifier = nn.Sequential(
-          nn.Flatten(),
-          # Where did this in_features shape come from? 
-          # It's because each layer of our network compresses and changes the shape of our inputs data.
-          nn.Linear(in_features=hidden_units*13*13,
-                    out_features=output_shape)
-      )
+        # 3. Create a layer to turn an image into patches
+        self.patcher = nn.Conv2d(in_channels=in_channels,
+                                 out_channels=embedding_dim,
+                                 kernel_size=patch_size,
+                                 stride=patch_size,
+                                 padding=0)
 
-  def forward(self, x: torch.Tensor):
-      x = self.conv_block_1(x)
-      x = self.conv_block_2(x)
-      x = self.classifier(x)
-      return x
-      # return self.classifier(self.conv_block_2(self.conv_block_1(x))) # <- leverage the benefits of operator fusion
+        # 4. Create a layer to flatten the patch feature maps into a single dimension
+        self.flatten = nn.Flatten(start_dim=2, # only flatten the feature map dimensions into a single vector
+                                  end_dim=3)
+
+    # 5. Define the forward method
+    def forward(self, x):
+        patch_size = 16
+        # Create assertion to check that inputs are the correct shape
+        image_resolution = x.shape[-1]
+        assert image_resolution % patch_size == 0, f"Input image size must be divisible by patch size, image shape: {image_resolution}, patch size: {patch_size}"
+
+        # Perform the forward pass
+        x_patched = self.patcher(x)
+        x_flattened = self.flatten(x_patched)
+        # 6. Make sure the output shape has the right order
+        return x_flattened.permute(0, 2, 1) # adjust so the embedding is on the final dimension [batch_size, P^2•C, N] -> [batch_size, N, P^2•C]

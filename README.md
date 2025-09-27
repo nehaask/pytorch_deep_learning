@@ -8,9 +8,3 @@ using PyTorch and applies it to the FoodVision Mini dataset (pizza, steak, sushi
 - `notebooks/` → step-by-step Jupyter notebook replication
 - `src/` → modular PyTorch code for data setup, model, training, and utils
 - `experiments/` → results, logs, trained models
-
-## Setup
-```bash
-git clone https://github.com/<your-username>/vit-foodvision-mini.git
-cd vit-foodvision-mini
-pip install -r requirements.txt

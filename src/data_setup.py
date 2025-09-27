@@ -3,11 +3,11 @@ Contains functionality for creating PyTorch DataLoaders for
 image classification data.
 """
 import os
-
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 
 NUM_WORKERS = os.cpu_count()
+IMG_SIZE = 224
 
 def create_dataloaders(
     train_dir: str, 
@@ -63,3 +63,6 @@ def create_dataloaders(
   )
 
   return train_dataloader, test_dataloader, class_names
+
+
+ # Get a batch of images
