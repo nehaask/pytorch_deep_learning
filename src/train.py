@@ -3,7 +3,6 @@ Trains a PyTorch image classification model using device-agnostic code.
 """
 import torch.nn as nn
 from multiprocessing import freeze_support
-import os
 import torch
 import matplotlib.pyplot as plt
 import data_setup, engine, model_builder, utils
@@ -125,10 +124,12 @@ def main():
     patch_embedded_image = patchify(image.unsqueeze(0)) # add an extra batch dimension on the 0th index, otherwise will error
     print(f"Output patch embedding shape: {patch_embedded_image.shape}")
 
+    utils.set_seeds()
+
     # # Create random input sizes
     # random_input_image = (1, 3, 224, 224)
 
-    # # Get a summary of the input and outputs of PatchEmbedding (uncomment for full output)
+    # # Get a summary of the input and outputs of PatchEmbedding
     # summary(model_builder.PatchEmbedding(),
     #         input_size=random_input_image,
     #         col_names=["input_size", "output_size", "num_params", "trainable"],
@@ -153,7 +154,7 @@ def main():
     patch_embedded_image_with_class_embedding = torch.cat((class_token, patch_embedded_image),
                                                         dim=1) # concat on first dimension
 
-    print(f"Sequence of patch embeddings with class token prepended shape: {patch_embedded_image_with_class_embedding.shape} -> [batch_size, number_of_patches, embedding_dimension]")
+    # print(f"Sequence of patch embeddings with class token prepended shape: {patch_embedded_image_with_class_embedding.shape} -> [batch_size, number_of_patches, embedding_dimension]")
 
     # =========================================================================
     ##### ADDING A POSITIONAL EMBEDDING #####
@@ -173,10 +174,119 @@ def main():
     
     # Add the position embedding to the patch and class token embedding
     patch_and_position_embedding = patch_embedded_image_with_class_embedding + position_embedding
-    print(patch_and_position_embedding)
-    print(f"Patch embeddings, class token prepended and positional embeddings added shape: {patch_and_position_embedding.shape} -> [batch_size, number_of_patches, embedding_dimension]")
+    # print(patch_and_position_embedding)
+    # print(f"Patch embeddings, class token prepended and positional embeddings added shape: {patch_and_position_embedding.shape} -> [batch_size, number_of_patches, embedding_dimension]")
 
+    # =========================================================================
+    ##### MULTI HEAD SELF ATTENTION (MSA) #####
+    # =========================================================================
 
+    # Create an instance of MSABlock
+    multihead_self_attention_block = model_builder.MultiheadSelfAttentionBlock(embedding_dim=768,
+                                                                num_heads=12)
+
+    # Pass patch and position image embedding through MSABlock
+    # patched_image_through_msa_block = multihead_self_attention_block(patch_and_position_embedding)
+    # print(f"Input shape of MSA block: {patch_and_position_embedding.shape}")
+    # print(f"Output shape MSA block: {patched_image_through_msa_block.shape}")
+
+    # =========================================================================
+    ##### MLP layer #####
+    # =========================================================================
+
+    # Create an instance of MLPBlock
+    mlp_block = model_builder.MLPBlock(embedding_dim=768, 
+                        mlp_size=3072, 
+                        dropout=0.1)
+
+    # Pass output of MSABlock through MLPBlock
+    # patched_image_through_mlp_block = mlp_block(patched_image_through_msa_block)
+    # print(f"Input shape of MLP block: {patched_image_through_msa_block.shape}")
+    # print(f"Output shape MLP block: {patched_image_through_mlp_block.shape}")
+
+    # =========================================================================
+    ##### Transformer Block - combining the Multi-head Self attention layer + MLP layer #####
+    # =========================================================================
+
+    # Create an instance of TransformerEncoderBlock
+    transformer_encoder_block = model_builder.TransformerEncoderBlock()
+
+    # Print an input and output summary of our Transformer Encoder
+    # summary(model=transformer_encoder_block,
+    #         input_size=(1, 197, 768), # (batch_size, num_patches, embedding_dimension)
+    #         col_names=["input_size", "output_size", "num_params", "trainable"],
+    #         col_width=20,
+    #         row_settings=["var_names"])
+    
+
+    # =========================================================================
+    ##### Using Torch's TransformerEncoder Layer architecture - for comparison
+    # =========================================================================
+
+    # Create the same as above with torch.nn.TransformerEncoderLayer()
+    torch_transformer_encoder_layer = nn.TransformerEncoderLayer(d_model=768, # Hidden size D from Table 1 for ViT-Base
+                                                                nhead=12, # Heads from Table 1 for ViT-Base
+                                                                dim_feedforward=3072, # MLP size from Table 1 for ViT-Base
+                                                                dropout=0.1, # Amount of dropout for dense layers from Table 3 for ViT-Base
+                                                                activation="gelu", # GELU non-linear activation
+                                                                batch_first=True, # Batches come first
+                                                                norm_first=True) # Normalize before MSA/MLP layers?
+
+    # print(torch_transformer_encoder_layer)
+    # Get the output of PyTorch's version of the Transformer Encoder
+    # summary(model=torch_transformer_encoder_layer,
+    #         input_size=(1, 197, 768), # (batch_size, num_patches, embedding_dimension)
+    #         col_names=["input_size", "output_size", "num_params", "trainable"],
+    #         col_width=20,
+    #         row_settings=["var_names"])
+    
+
+    # =========================================================================
+    ##### ViT block - follow paper diagram for architecture details
+    # =========================================================================
+
+    utils.set_seeds()
+
+    # Create a random tensor with same shape as a single image
+    random_image_tensor = torch.randn(1, 3, 224, 224).to(device) # (batch_size, color_channels, height, width)
+
+    # Create an instance of ViT with the number of classes (pizza, steak, sushi)
+    vit = model_builder.ViT(num_classes=len(class_names)).to(device)
+    vit(random_image_tensor)
+
+    # Print a summary of our custom ViT model using torchinfo
+    # summary(model=vit,
+    #         input_size=(32, 3, 224, 224), # (batch_size, color_channels, height, width)
+    #         # col_names=["input_size"],
+    #         col_names=["input_size", "output_size", "num_params", "trainable"],
+    #         col_width=20,
+    #         row_settings=["var_names"]
+    # )
+
+    # =========================================================================
+    ##### TRAINING - ViT 
+    # =========================================================================
+
+    # Setup the optimizer to optimize our ViT model parameters using hyperparameters from the ViT paper
+    optimizer = torch.optim.Adam(params=vit.parameters(),
+                                lr=3e-3, # Base LR from Table 3 for ViT-* ImageNet-1k
+                                betas=(0.9, 0.999), # default values but also mentioned in ViT paper section 4.1 (Training & Fine-tuning)
+                                weight_decay=0.3) # from the ViT paper section 4.1 (Training & Fine-tuning) and Table 3 for ViT-* ImageNet-1k
+
+    # Setup the loss function for multi-class classification
+    loss_fn = torch.nn.CrossEntropyLoss()
+
+    # Train the model and save the training results to a dictionary
+    results = engine.train(model=vit,
+                        train_dataloader=train_dataloader,
+                        test_dataloader=test_dataloader,
+                        optimizer=optimizer,
+                        loss_fn=loss_fn,
+                        epochs=10,
+                        device=device)
+    
+    # Plot our ViT model's loss curves
+    utils.plot_loss_curves(results)
 
 if __name__ == "__main__":
     freeze_support()   # only needed if making a frozen executable (e.g., PyInstaller)

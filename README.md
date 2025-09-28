@@ -26,3 +26,7 @@ using PyTorch and applies it to the FoodVision Mini dataset (pizza, steak, sushi
     - Finally, adding a positional embedding to each patch (to know where it was in the image originally), create a tensor of the same shape as the Patch embedding + CLS layer (1, 197, 768) and just add to the patch embeddings layer
     
 3) Multi-Head Attention (MSA)
+
+- LayerNorm 
+
+- Residial (skip) connections
