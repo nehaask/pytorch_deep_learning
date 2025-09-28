@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import data_setup, engine, model_builder, utils
 from torchvision import transforms
 from torchinfo import summary
+import torchvision
 
 # Setup hyperparameters
 BATCH_SIZE = 32
@@ -276,17 +277,79 @@ def main():
     # Setup the loss function for multi-class classification
     loss_fn = torch.nn.CrossEntropyLoss()
 
-    # Train the model and save the training results to a dictionary
-    results = engine.train(model=vit,
-                        train_dataloader=train_dataloader,
-                        test_dataloader=test_dataloader,
-                        optimizer=optimizer,
-                        loss_fn=loss_fn,
-                        epochs=10,
-                        device=device)
+    # # Train the model and save the training results to a dictionary
+    # results = engine.train(model=vit,
+    #                     train_dataloader=train_dataloader,
+    #                     test_dataloader=test_dataloader,
+    #                     optimizer=optimizer,
+    #                     loss_fn=loss_fn,
+    #                     epochs=10,
+    #                     device=device)
     
-    # Plot our ViT model's loss curves
-    utils.plot_loss_curves(results)
+    # # Plot our ViT model's loss curves
+    # utils.plot_loss_curves(results)
+
+    # =========================================================================
+    ##### USING A PRETRAINED ViT MODEL
+    # =========================================================================
+
+    # 1. Get pretrained weights for ViT-Base
+    pretrained_vit_weights = torchvision.models.ViT_B_16_Weights.DEFAULT
+
+    # 2. Setup a ViT model instance with pretrained weights
+    pretrained_vit = torchvision.models.vit_b_16(weights=pretrained_vit_weights)
+
+    # 3. Freeze the base parameters
+    for parameter in pretrained_vit.parameters():
+        parameter.requires_grad = False
+
+    # 4. Change the classifier head (set the seeds to ensure same initialization with linear head)
+    utils.set_seeds()
+    pretrained_vit.heads = nn.Linear(in_features=768, out_features=len(class_names))
+    pretrained_vit = pretrained_vit.to(device, dtype=torch.float32)
+    # print(next(pretrained_vit.parameters()).device)
+
+    # # # Print a summary using torchinfo
+    # # summary(model=pretrained_vit,
+    # #         input_size=(32, 3, 224, 224), # (batch_size, color_channels, height, width)
+    # #         # col_names=["input_size"], # uncomment for smaller output
+    # #         col_names=["input_size", "output_size", "num_params", "trainable"],
+    # #         col_width=20,
+    # #         row_settings=["var_names"]
+    # # )
+    
+    # Get automatic transforms from pretrained ViT weights
+    pretrained_vit_transforms = pretrained_vit_weights.transforms()
+    print(pretrained_vit_transforms)
+
+    # Setup dataloaders
+    train_dataloader_pretrained, test_dataloader_pretrained, class_names = data_setup.create_dataloaders(train_dir=train_dir,
+                                                                                                     test_dir=test_dir,
+                                                                                                     transform=pretrained_vit_transforms,
+                                                                                                     batch_size=32,  # Could increase if we had more samples, such as here: https://arxiv.org/abs/2205.01580 
+                                                                                                     )
+    
+    # Create optimizer and loss function
+    optimizer = torch.optim.Adam(params=pretrained_vit.parameters(),
+                                lr=1e-3)
+    loss_fn = torch.nn.CrossEntropyLoss()
+
+    # Train the classifier head of the pretrained ViT feature extractor model
+    utils.set_seeds()
+    pretrained_vit_results = engine.train(model=pretrained_vit,
+                                        train_dataloader=train_dataloader_pretrained,
+                                        test_dataloader=test_dataloader_pretrained,
+                                        optimizer=optimizer,
+                                        loss_fn=loss_fn,
+                                        epochs=10,
+                                        device=device)
+    
+    utils.plot_loss_curves(pretrained_vit_results)
+
+    utils.save_model(model=pretrained_vit,
+                 target_dir="models",
+                 model_name="pretrained_vit_feature_extractor_pizza_steak_sushi.pth")
+
 
 if __name__ == "__main__":
     freeze_support()   # only needed if making a frozen executable (e.g., PyInstaller)

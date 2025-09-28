@@ -111,10 +111,10 @@ class TransformerEncoderBlock(nn.Module):
     def forward(self, x):
 
         # 6. Create residual connection for MSA block (add the input to the output)
-        x =  self.msa_block(x) + x
+        x = self.msa_block(x)
 
         # 7. Create residual connection for MLP block (add the input to the output)
-        x = self.mlp_block(x) + x
+        x = self.mlp_block(x)
 
         return x
     
@@ -144,9 +144,10 @@ class MLPBlock(nn.Module):
 
     # 5. Create a forward() method to pass the data through the layers
     def forward(self, x):
+        residual = x
         x = self.layer_norm(x)
         x = self.mlp(x)
-        return x
+        return x + residual
 
 class MultiheadSelfAttentionBlock(nn.Module):
     """Creates a multi-head self-attention block ("MSA block" for short).
@@ -169,12 +170,13 @@ class MultiheadSelfAttentionBlock(nn.Module):
 
     # Create a forward() method to pass the data through the layers
     def forward(self, x):
+        residual = x 
         x = self.layer_norm(x)
         attn_output, _ = self.multihead_attn(query=x, # query embeddings
                                              key=x, # key embeddings
                                              value=x, # value embeddings
                                              need_weights=False) # default; need weights _ for debugging
-        return attn_output
+        return attn_output + residual
 
 class PatchEmbedding(nn.Module):
     """Turns a 2D input image into a 1D sequence learnable embedding vector.
